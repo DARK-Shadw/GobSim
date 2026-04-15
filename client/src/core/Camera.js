@@ -37,6 +37,10 @@ export class Camera {
     // Cinematic lock — when true, user input is ignored
     this.locked = false;
 
+    // Shake offsets (set externally for VFX)
+    this._shakeOffsetX = 0;
+    this._shakeOffsetY = 0;
+
     this._bindInput();
     this._applyTransform();
   }
@@ -105,8 +109,8 @@ export class Camera {
   _applyTransform() {
     const screen = this.app.pixi.screen;
     this.worldContainer.scale.set(this.zoom);
-    this.worldContainer.x = screen.width / 2 - this.x * this.zoom;
-    this.worldContainer.y = screen.height / 2 - this.y * this.zoom;
+    this.worldContainer.x = screen.width / 2 - this.x * this.zoom + this._shakeOffsetX;
+    this.worldContainer.y = screen.height / 2 - this.y * this.zoom + this._shakeOffsetY;
   }
 
   /**

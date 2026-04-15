@@ -375,10 +375,10 @@ export class WorldGenerator {
         const ny = r / WORLD_ROWS;
         const val = noise(nx * 6, ny * 6);
 
-        if (val > 0.55) {
+        if (val > 0.65) {
           const variant = ((c * 7 + r * 13) % 4) + 1;
           this.decorations.push({ type: 'tree', col: c, row: r, variant });
-        } else if (val > 0.3 && val < 0.4) {
+        } else if (val > 0.33 && val < 0.37) {
           const variant = ((c * 3 + r * 11) % 4) + 1;
           this.decorations.push({ type: 'bush', col: c, row: r, variant });
         }
@@ -434,7 +434,7 @@ export class WorldGenerator {
         const ny = r / WORLD_ROWS;
         const val = noise(nx * 5, ny * 5);
 
-        if (elev >= ELEVATION.FLAT && val > 0.7) {
+        if (elev >= ELEVATION.FLAT && val > 0.78) {
           const hasTree = this.decorations.some(
             d => d.col === c && d.row === r && d.type === 'tree'
           );
@@ -448,7 +448,7 @@ export class WorldGenerator {
           const hasDecor = this.decorations.some(
             d => d.col === c && d.row === r
           );
-          if (!hasDecor && this.rng.next() < 0.3) {
+          if (!hasDecor && this.rng.next() < 0.15) {
             this.resources.push({ type: 'sheep', col: c, row: r, variant: 1 });
           }
         }
@@ -499,6 +499,54 @@ export class WorldGenerator {
           if (nearTree) return { col: c, row: r };
         }
       }
+    }
+
+    return { col: Math.floor(WORLD_COLS / 2), row: Math.floor(WORLD_ROWS / 2) };
+  }
+
+  /**
+   * Find a walkable tile with NO resources/decorations within `clearRadius`.
+   * Forces the goblin to spawn in a barren area — survival starts hard.
+   */
+  findBarrenSpot(clearRadius = 6) {
+    const occupied = new Set();
+    for (const d of this.decorations) occupied.add(`${d.col},${d.row}`);
+    for (const r of this.resources) occupied.add(`${r.col},${r.row}`);
+
+    // Shuffle search order using seeded RNG so spawn varies per seed
+    const candidates = [];
+    for (let r = 5; r < WORLD_ROWS - 5; r++) {
+      for (let c = 5; c < WORLD_COLS - 5; c++) {
+        if (this.elevation[r][c] >= ELEVATION.FLAT) {
+          candidates.push({ col: c, row: r });
+        }
+      }
+    }
+    // Fisher-Yates shuffle
+    for (let i = candidates.length - 1; i > 0; i--) {
+      const j = Math.floor(this.rng.next() * (i + 1));
+      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+    }
+
+    for (const { col, row } of candidates) {
+      let clear = true;
+      for (let dr = -clearRadius; dr <= clearRadius && clear; dr++) {
+        for (let dc = -clearRadius; dc <= clearRadius && clear; dc++) {
+          if (occupied.has(`${col + dc},${row + dr}`)) clear = false;
+        }
+      }
+      if (clear) return { col, row };
+    }
+
+    // Fallback: relax to radius 3
+    for (const { col, row } of candidates) {
+      let clear = true;
+      for (let dr = -3; dr <= 3 && clear; dr++) {
+        for (let dc = -3; dc <= 3 && clear; dc++) {
+          if (occupied.has(`${col + dc},${row + dr}`)) clear = false;
+        }
+      }
+      if (clear) return { col, row };
     }
 
     return { col: Math.floor(WORLD_COLS / 2), row: Math.floor(WORLD_ROWS / 2) };

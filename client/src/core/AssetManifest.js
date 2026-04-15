@@ -3,6 +3,7 @@ import { ASSET_BASE } from '@shared/constants.js';
 const T = `${ASSET_BASE}/Terrain`;
 const B = `${ASSET_BASE}/Buildings`;
 const U = `${ASSET_BASE}/UI Elements/UI Elements`;
+const P = `${ASSET_BASE}/Units/Purple Units/Pawn`;
 
 export const ASSET_MANIFEST = {
   // ── Terrain Tileset ──
@@ -81,11 +82,38 @@ export const ASSET_MANIFEST = {
   tool3: `${T}/Resources/Tools/Tool_03.png`,
   tool4: `${T}/Resources/Tools/Tool_04.png`,
 
+  // ── Goblin (Purple Pawn) — Idle (8fr, 192×192) ──
+  goblin_idle:         `${P}/Pawn_Idle.png`,
+  goblin_idle_axe:     `${P}/Pawn_Idle Axe.png`,
+  goblin_idle_gold:    `${P}/Pawn_Idle Gold.png`,
+  goblin_idle_hammer:  `${P}/Pawn_Idle Hammer.png`,
+  goblin_idle_knife:   `${P}/Pawn_Idle Knife.png`,
+  goblin_idle_meat:    `${P}/Pawn_Idle Meat.png`,
+  goblin_idle_pickaxe: `${P}/Pawn_Idle Pickaxe.png`,
+  goblin_idle_wood:    `${P}/Pawn_Idle Wood.png`,
+
+  // ── Goblin — Run (6fr, 192×192) ──
+  goblin_run:         `${P}/Pawn_Run.png`,
+  goblin_run_axe:     `${P}/Pawn_Run Axe.png`,
+  goblin_run_gold:    `${P}/Pawn_Run Gold.png`,
+  goblin_run_hammer:  `${P}/Pawn_Run Hammer.png`,
+  goblin_run_knife:   `${P}/Pawn_Run Knife.png`,
+  goblin_run_meat:    `${P}/Pawn_Run Meat.png`,
+  goblin_run_pickaxe: `${P}/Pawn_Run Pickaxe.png`,
+  goblin_run_wood:    `${P}/Pawn_Run Wood.png`,
+
+  // ── Goblin — Interact (192×192, variable frame counts) ──
+  goblin_interact_axe:     `${P}/Pawn_Interact Axe.png`,
+  goblin_interact_hammer:  `${P}/Pawn_Interact Hammer.png`,
+  goblin_interact_knife:   `${P}/Pawn_Interact Knife.png`,
+  goblin_interact_pickaxe: `${P}/Pawn_Interact Pickaxe.png`,
+
   // ── Particle FX ──
   dust1: `${ASSET_BASE}/Particle FX/Dust_01.png`,
   dust2: `${ASSET_BASE}/Particle FX/Dust_02.png`,
   explosion1: `${ASSET_BASE}/Particle FX/Explosion_01.png`,
   explosion2: `${ASSET_BASE}/Particle FX/Explosion_02.png`,
+  fire: `${ASSET_BASE}/Particle FX/Fire_02.png`,
 
   // ── Buildings (Blue — default faction) ──
   house1: `${B}/Blue Buildings/House1.png`,

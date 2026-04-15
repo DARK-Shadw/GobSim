@@ -242,7 +242,16 @@ export class ResourceManager {
     for (const dec of this.world.decorations) {
       if (dec.type === 'bush' || dec.type === 'tree') {
         const entity = this.spawn(dec.type, dec.col, dec.row, dec.variant);
-        if (entity) this._counts[dec.type].initial++;
+        if (entity) {
+          this._counts[dec.type].initial++;
+          // Scarce food at start — 65% of bushes start depleted
+          if (dec.type === 'bush' && this.rng.next() > 0.35) {
+            const ctx = this._makeContext(0);
+            entity.setState('DEPLETED', ctx);
+            // Stagger regrow times so they don't all come back at once
+            entity.stateTimer = Math.floor(this.rng.next() * 1200);
+          }
+        }
       }
     }
     // Sheep and gold from resources

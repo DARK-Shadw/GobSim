@@ -6,7 +6,7 @@ import { TILE_SIZE } from '@shared/constants.js';
  * Skippable by clicking or pressing any key.
  */
 export class IntroSequence {
-  constructor(app, camera, world, worldName) {
+  constructor(app, camera, world, worldName, spawnPos) {
     this.app = app;
     this.camera = camera;
     this.done = false;
@@ -14,12 +14,14 @@ export class IntroSequence {
     this._duration = 8000; // ms
     this._skipped = false;
 
-    // Find scenic start and end positions
-    const scenic = world.findScenicSpot();
-    this._startX = scenic.col * TILE_SIZE - 200;
-    this._startY = scenic.row * TILE_SIZE - 100;
-    this._endX = scenic.col * TILE_SIZE + 200;
-    this._endY = scenic.row * TILE_SIZE + 50;
+    // Use goblin spawn position if provided, otherwise scenic spot
+    const target = spawnPos || world.findScenicSpot();
+    const cx = target.col * TILE_SIZE;
+    const cy = target.row * TILE_SIZE;
+    this._startX = cx - 200;
+    this._startY = cy - 100;
+    this._endX = cx + 200;
+    this._endY = cy + 50;
     this._startZoom = 1.2;
     this._endZoom = 0.6;
 

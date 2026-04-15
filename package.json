@@ -13,6 +13,7 @@
     "simplex-noise": "^4.0.3"
   },
   "devDependencies": {
+    "playwright": "^1.59.1",
     "vite": "^6.3.2"
   }
 }

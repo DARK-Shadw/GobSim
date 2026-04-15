@@ -19,16 +19,17 @@ const SELECT_BOX_BASE = 128; // native size of Cursor_04.png
  * Right-click an entity to inspect — draws a select box and camera follows it.
  */
 export class DevOverlay {
-  constructor(app, camera, resources) {
+  constructor(app, camera, resources, goblins) {
     this.app = app;
     this.camera = camera;
     this.resources = resources;
+    this.goblins = goblins;
     this.visible = false;
 
     // Track mouse in screen space
     this._mouseX = 0;
     this._mouseY = 0;
-    this._inspected = null; // entity id currently inspected
+    this._inspected = null; // { type: 'resource'|'goblin', id }
     this._following = false; // camera tracking active
 
     // Container lives in UI layer (camera-independent)
@@ -65,6 +66,11 @@ export class DevOverlay {
     this._selectBox.visible = false;
     this._selectBox.zIndex = 999999;
     app.worldContainer.addChild(this._selectBox);
+
+    // World-space graphics for goblin visualization
+    this._worldGfx = new Graphics();
+    this._worldGfx.zIndex = 999998;
+    app.worldContainer.addChild(this._worldGfx);
 
     app.uiContainer.addChild(this.container);
 
@@ -127,6 +133,7 @@ export class DevOverlay {
     this._inspectBg.visible = false;
     this._inspectText.visible = false;
     this._selectBox.visible = false;
+    this._worldGfx.clear();
   }
 
   _screenToWorld(sx, sy) {
@@ -146,7 +153,21 @@ export class DevOverlay {
     const { wx, wy } = this._screenToWorld(sx, sy);
     const { col, row } = this._worldToTile(wx, wy);
 
-    // Search the clicked tile and adjacent tiles for entities
+    // Check goblins first (search clicked tile and neighbors)
+    const goblin = this.goblins.getGoblinAt(col, row)
+      || this.goblins.getGoblinAt(col - 1, row)
+      || this.goblins.getGoblinAt(col + 1, row)
+      || this.goblins.getGoblinAt(col, row - 1)
+      || this.goblins.getGoblinAt(col, row + 1);
+
+    if (goblin) {
+      this._inspected = { type: 'goblin', id: goblin.id };
+      this._following = true;
+      this._selectBox.visible = true;
+      return;
+    }
+
+    // Then check resources
     const entity = this.resources.getResourceAt(col, row)
       || this.resources.getResourceAt(col - 1, row)
       || this.resources.getResourceAt(col + 1, row)
@@ -154,7 +175,7 @@ export class DevOverlay {
       || this.resources.getResourceAt(col, row + 1);
 
     if (entity) {
-      this._inspected = entity.id;
+      this._inspected = { type: 'resource', id: entity.id };
       this._following = true;
       this._selectBox.visible = true;
     } else {
@@ -183,6 +204,7 @@ export class DevOverlay {
 
     // Entity count
     const totalEntities = this.resources._entities.size;
+    const goblinCount = this.goblins.getAllGoblins().size;
 
     const lines = [
       `FPS: ${fps}`,
@@ -190,6 +212,7 @@ export class DevOverlay {
       `World: ${wx.toFixed(0)}, ${wy.toFixed(0)}`,
       `Zoom: ${this.camera.zoom.toFixed(2)}`,
       ``,
+      `Goblins: ${goblinCount}`,
       `Entities: ${totalEntities}`,
       countLines,
       ``,
@@ -213,6 +236,8 @@ export class DevOverlay {
   }
 
   _updateInspectPanel(mainWidth) {
+    this._worldGfx.clear();
+
     if (!this._inspected) {
       this._inspectBg.visible = false;
       this._inspectText.visible = false;
@@ -220,32 +245,28 @@ export class DevOverlay {
       return;
     }
 
-    const entity = this.resources.getEntity(this._inspected);
+    if (this._inspected.type === 'goblin') {
+      this._updateGoblinInspect(mainWidth);
+    } else {
+      this._updateResourceInspect(mainWidth);
+    }
+  }
+
+  _updateResourceInspect(mainWidth) {
+    const entity = this.resources.getEntity(this._inspected.id);
     if (!entity || !entity.alive) {
       this._clearInspect();
       return;
     }
 
-    // Position and scale the select box around the entity's sprite
-    const sprite = entity.sprite;
-    if (sprite) {
-      // Estimate the sprite's visual size to scale the box around it
-      const spriteH = sprite.height / Math.abs(sprite.scale.y);
-      const boxSize = Math.max(spriteH, TILE_SIZE) * 1.3;
-      const scale = boxSize / SELECT_BOX_BASE;
-      this._selectBox.scale.set(scale);
-      this._selectBox.x = entity.px;
-      this._selectBox.y = entity.py - boxSize * 0.4; // center vertically on sprite
-      this._selectBox.visible = true;
-    }
+    this._positionSelectBox(entity.sprite, entity.px, entity.py);
 
-    // Camera follows the inspected entity
     if (this._following) {
       this.camera.moveTo(entity.px, entity.py);
     }
 
     const lines = [
-      `--- Inspect ---`,
+      `--- Resource ---`,
       `ID: ${entity.id}`,
       `Type: ${entity.type}`,
       `State: ${entity.state}`,
@@ -255,15 +276,125 @@ export class DevOverlay {
       `Home: ${entity.homeCol}, ${entity.homeRow}`,
     ];
 
-    // Show type-specific data
     if (entity.data && Object.keys(entity.data).length > 0) {
       for (const [k, v] of Object.entries(entity.data)) {
-        if (k === 'frames' || k === 'frameH') continue; // skip bulky cached data
+        if (k === 'frames' || k === 'frameH') continue;
         const display = typeof v === 'number' ? v.toFixed(1) : String(v);
         lines.push(`${k}: ${display}`);
       }
     }
 
+    this._showInspectText(lines, mainWidth);
+  }
+
+  _updateGoblinInspect(mainWidth) {
+    const goblin = this.goblins.getGoblin(this._inspected.id);
+    if (!goblin || !goblin.alive) {
+      this._clearInspect();
+      return;
+    }
+
+    this._positionSelectBox(goblin.sprite, goblin.px, goblin.py);
+
+    if (this._following) {
+      this.camera.moveTo(goblin.px, goblin.py);
+    }
+
+    // Drive bar helper
+    const bar = (val, w = 10) => {
+      const filled = Math.round(val * w);
+      return '[' + '|'.repeat(filled) + ' '.repeat(w - filled) + ']';
+    };
+
+    const d = goblin.drives;
+    const inv = goblin.inventory;
+    const explored = goblin.explored.reduce((sum, v) => sum + v, 0);
+
+    const lines = [
+      `--- Goblin #${goblin.id} ---`,
+      `Pos: ${goblin.col}, ${goblin.row}`,
+      `Action: ${goblin.currentAction?.name || 'none'}`,
+      `Timer: ${Math.round(goblin.actionTimer)}`,
+      ``,
+      `Hunger:    ${bar(d.hunger)} ${d.hunger.toFixed(2)}`,
+      `Stamina:   ${bar(d.stamina)} ${d.stamina.toFixed(2)}`,
+      `Fatigue:   ${bar(d.fatigue)} ${d.fatigue.toFixed(2)}`,
+      `Curiosity: ${bar(d.curiosity)} ${d.curiosity.toFixed(2)}`,
+      `MaxStam:   ${goblin.getEffectiveMaxStamina().toFixed(2)}  Speed: ${goblin.getEffectiveSpeed().toFixed(2)}`,
+      ``,
+      `Inventory: M:${inv.meat} W:${inv.wood} G:${inv.gold}`,
+      `Carry: ${goblin.carry}`,
+      `Memory: ${goblin.memory.size} entries`,
+      `Explored: ${explored} tiles`,
+      `Path: ${goblin.path ? `${goblin.pathIndex}/${goblin.path.length}` : 'none'}`,
+    ];
+
+    this._showInspectText(lines, mainWidth);
+
+    // ── World-space visualizations ──
+    const gfx = this._worldGfx;
+
+    // Vision circle (green, semi-transparent) — uses effective range (night shrinks it)
+    const effectiveRange = this.goblins._getEffectiveVisionRange
+      ? this.goblins._getEffectiveVisionRange(goblin)
+      : goblin.traits.sense_range;
+    const visionRadius = effectiveRange * TILE_SIZE;
+    gfx.circle(goblin.px, goblin.py - TILE_SIZE / 2, visionRadius);
+    gfx.stroke({ color: 0x00ff66, alpha: 0.3, width: 2 });
+
+    // Path line (yellow)
+    if (goblin.path && goblin.pathIndex < goblin.path.length) {
+      gfx.moveTo(goblin.px, goblin.py);
+      for (let i = goblin.pathIndex; i < goblin.path.length; i++) {
+        const wp = goblin.path[i];
+        gfx.lineTo(
+          wp.col * TILE_SIZE + TILE_SIZE / 2,
+          wp.row * TILE_SIZE + TILE_SIZE
+        );
+      }
+      gfx.stroke({ color: 0xffff00, alpha: 0.6, width: 2 });
+    }
+
+    // Memory dots (colored by type)
+    const MEM_COLORS = {
+      bush: 0x44cc44,
+      tree: 0x886633,
+      gold: 0xffcc00,
+      sheep: 0xffffff,
+      drop_meat: 0xff4444,
+      drop_wood: 0xcc8844,
+      drop_gold: 0xffee44,
+    };
+
+    for (const entry of goblin.memory.values()) {
+      const color = MEM_COLORS[entry.type] || 0x888888;
+      const mx = entry.col * TILE_SIZE + TILE_SIZE / 2;
+      const my = entry.row * TILE_SIZE + TILE_SIZE / 2;
+      gfx.circle(mx, my, 4);
+      gfx.fill({ color, alpha: 0.7 });
+    }
+
+    // Camp dot (orange)
+    const camp = this.goblins.camp;
+    if (camp) {
+      gfx.circle(camp.px, camp.py - TILE_SIZE / 2, 6);
+      gfx.fill({ color: 0xff8800, alpha: 0.8 });
+    }
+  }
+
+  _positionSelectBox(sprite, px, py) {
+    if (sprite) {
+      const spriteH = sprite.height / Math.abs(sprite.scale.y);
+      const boxSize = Math.max(spriteH, TILE_SIZE) * 1.3;
+      const scale = boxSize / SELECT_BOX_BASE;
+      this._selectBox.scale.set(scale);
+      this._selectBox.x = px;
+      this._selectBox.y = py - boxSize * 0.4;
+      this._selectBox.visible = true;
+    }
+  }
+
+  _showInspectText(lines, mainWidth) {
     this._inspectText.text = lines.join('\n');
     this._inspectText.visible = true;
     this._inspectText.x = mainWidth + PAD + PAD;

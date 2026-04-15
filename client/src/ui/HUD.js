@@ -48,9 +48,17 @@ export class HUD {
     this._infoText.y = 38;
     this.container.addChild(this._infoText);
 
+    // Speed indicator
+    this._speedText = new Text({
+      text: '',
+      style: { ...FONT_STYLE_SMALL, fontSize: 13, fill: 0xffcc44 },
+    });
+    this._speedText.anchor.set(1, 0);
+    this.container.addChild(this._speedText);
+
     // Screenshot hint
     this._hintText = new Text({
-      text: '[P] Screenshot',
+      text: '[P] Screenshot  [1-4] Speed',
       style: { ...FONT_STYLE_SMALL, fontSize: 12, fill: 0xaaaaaa },
     });
     this._hintText.anchor.set(1, 0);
@@ -64,12 +72,29 @@ export class HUD {
 
   _onResize(app) {
     const screen = app.pixi.screen;
+    this._speedText.x = screen.width - 16;
+    this._speedText.y = 16;
     this._hintText.x = screen.width - 16;
-    this._hintText.y = 16;
+    this._hintText.y = 32;
   }
 
-  setDay(day) {
+  setDay(day, phaseIcon) {
     this.dayCount = day;
-    this._infoText.text = `Day ${day}`;
+    const icon = phaseIcon || '';
+    this._infoText.text = icon ? `${icon} Day ${day}` : `Day ${day}`;
+  }
+
+  setDayNight(dayNight) {
+    this._infoText.text = `${dayNight.getPhaseIcon()} Day ${dayNight.dayCount}`;
+  }
+
+  setSpeed(speed) {
+    if (speed === 0) {
+      this._speedText.text = '\u23F8 Paused';
+    } else if (speed === 1) {
+      this._speedText.text = '\u25B6 1x';
+    } else {
+      this._speedText.text = '\u25B6'.repeat(Math.min(speed, 3)) + ` ${speed}x`;
+    }
   }
 }

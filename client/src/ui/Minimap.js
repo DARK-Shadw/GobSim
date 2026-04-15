@@ -16,14 +16,16 @@ const COLORS = {
 
 /**
  * Small overview map in the bottom-right corner.
- * Shows terrain overview and current viewport rectangle.
+ * Shows terrain overview, viewport rectangle, goblin dots, and camp dot.
  * Click to jump camera to location.
  */
 export class Minimap {
-  constructor(app, world, camera) {
+  constructor(app, world, camera, goblins) {
     this.app = app;
     this.camera = camera;
+    this.goblins = goblins;
     this.container = new Container({ label: 'minimap' });
+    this._tick = 0;
 
     // Background frame
     const frame = new Graphics();
@@ -39,6 +41,10 @@ export class Minimap {
     // Viewport rectangle
     this._viewRect = new Graphics();
     this.container.addChild(this._viewRect);
+
+    // Entity dots layer (goblins + camp)
+    this._dots = new Graphics();
+    this.container.addChild(this._dots);
 
     // Position in bottom-right
     app.uiContainer.addChild(this.container);
@@ -91,9 +97,12 @@ export class Minimap {
   }
 
   /**
-   * Update the viewport rectangle. Call each frame.
+   * Update the viewport rectangle, goblin dots, and camp dot. Call each frame.
    */
   update(viewBounds) {
+    this._tick++;
+
+    // Viewport rectangle
     this._viewRect.clear();
     const x = (viewBounds.x / (WORLD_COLS * TILE_SIZE)) * MAP_W;
     const y = (viewBounds.y / (WORLD_ROWS * TILE_SIZE)) * MAP_H;
@@ -102,5 +111,29 @@ export class Minimap {
 
     this._viewRect.rect(x, y, w, h);
     this._viewRect.stroke({ color: 0xffffff, width: 1.5 });
+
+    // Entity dots
+    this._dots.clear();
+
+    // Camp dot — solid orange
+    const camp = this.goblins.camp;
+    if (camp) {
+      const cx = camp.col * SCALE_X;
+      const cy = camp.row * SCALE_Y;
+      this._dots.circle(cx, cy, 3);
+      this._dots.fill({ color: 0xff8800 });
+    }
+
+    // Goblin dots — pulsing purple
+    const pulse = 0.5 + 0.5 * Math.sin(this._tick * 0.08);
+    const size = 2 + pulse * 1.5;
+
+    for (const goblin of this.goblins.getAllGoblins().values()) {
+      if (!goblin.alive) continue;
+      const gx = goblin.col * SCALE_X;
+      const gy = goblin.row * SCALE_Y;
+      this._dots.circle(gx, gy, size);
+      this._dots.fill({ color: 0xaa44ff, alpha: 0.6 + pulse * 0.4 });
+    }
   }
 }

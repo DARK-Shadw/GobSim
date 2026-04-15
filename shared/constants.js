@@ -1,6 +1,6 @@
 export const TILE_SIZE = 64;
-export const WORLD_COLS = 100;
-export const WORLD_ROWS = 80;
+export const WORLD_COLS = 150;
+export const WORLD_ROWS = 120;
 
 export const WATER_BG_COLOR = 0x629b9e;
 
@@ -48,8 +48,8 @@ export const RESOURCE = {
   SHEEP_REPRO_CHECK_INTERVAL: 60, // only check every N ticks
 
   // Bush (berry) regrowth
-  BUSH_REGROW_TICKS: 600,      // ~10s depleted → regrowing
-  BUSH_REGROW2_TICKS: 300,     // ~5s regrowing → full
+  BUSH_REGROW_TICKS: 3600,     // ~60s depleted → regrowing
+  BUSH_REGROW2_TICKS: 1800,    // ~30s regrowing → full
 
   // Tree lifecycle
   TREE_STUMP_TICKS: 1800,      // ~30s stump → sapling
@@ -61,6 +61,83 @@ export const RESOURCE = {
   // Dropped resources
   DROP_DESPAWN_TICKS: 18000,   // ~5 minutes
   DROP_FADE_TICKS: 60,         // ~1s fade out
+};
+
+// Goblin animation speeds
+export const GOBLIN_ANIM = {
+  IDLE: 0.1,
+  RUN: 0.15,
+  INTERACT: 0.12,
+};
+
+// Goblin sprite frame info
+export const GOBLIN_FRAME = {
+  W: 192,
+  H: 192,
+  IDLE_COUNT: 8,
+  RUN_COUNT: 6,
+  INTERACT_AXE_COUNT: 6,
+  INTERACT_HAMMER_COUNT: 3,
+  INTERACT_KNIFE_COUNT: 4,
+  INTERACT_PICKAXE_COUNT: 6,
+};
+
+// Fire sprite info
+export const FIRE_FRAME = {
+  W: 64,
+  H: 64,
+  COUNT: 10,
+};
+
+// Goblin default traits (Phase 3: genome floats)
+export const GOBLIN_DEFAULTS = {
+  SPEED: 1.2,
+  SENSE_RANGE: 4,
+  METABOLISM: 0.00015,
+  CURIOSITY_RISE: 0.0001,
+  GATHER_TIME: 120,
+  EAT_TIME: 90,
+  CARRY_CAPACITY: 3,
+
+  // Stamina (short-term energy, recovers anywhere)
+  STAMINA_DECAY: 0.0001,            // idle drain (barely noticeable)
+  STAMINA_SPRINT_DRAIN: 0.0003,     // walking drain (halved — walking shouldn't exhaust)
+  STAMINA_LABOR_DRAIN: 0.0006,      // chopping/mining drain (real work is tiring)
+  STAMINA_REGEN: 0.003,             // recover faster when resting (less time wasted)
+  STAMINA_LOW_THRESHOLD: 0.2,
+
+  // Fatigue (long-term, only recovers during camp sleep)
+  FATIGUE_RISE: 0.00004,            // slower buildup — more productive time before sleep needed
+  FATIGUE_SLEEP_RATE: 0.002,        // recover faster during sleep (less boring to watch)
+  FATIGUE_MAX_STAMINA_PENALTY: 0.5,
+  FATIGUE_SPEED_PENALTY: 0.4,
+  FATIGUE_GATHER_PENALTY: 0.5,
+  FATIGUE_SLEEP_THRESHOLD: 0.4,
+};
+
+// A* pathfinding
+export const PATHFINDING = {
+  MAX_PER_FRAME: 3,
+  MAX_OPEN_SET: 4000,
+  REPATH_INTERVAL: 120,
+};
+
+// Day/Night cycle
+export const DAY_NIGHT = {
+  CYCLE_TICKS: 10800,          // ~3 minutes per full day at 60fps
+  DAWN_START: 0.0,
+  DAY_START: 0.15,
+  DUSK_START: 0.6,
+  NIGHT_START: 0.75,
+
+  NIGHT_VISION_MULT: 0.5,
+  NIGHT_FATIGUE_MULT: 2.0,
+  NIGHT_HUNGER_MULT: 1.3,
+
+  TINT_DAWN:  0xffd4a0,
+  TINT_DAY:   0xffffff,
+  TINT_DUSK:  0xd4a0ff,
+  TINT_NIGHT: 0x4466aa,
 };
 
 // World generation
