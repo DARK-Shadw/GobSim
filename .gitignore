@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.claude/
+Videos/
+*.log
+.DS_Store
+Thumbs.db
