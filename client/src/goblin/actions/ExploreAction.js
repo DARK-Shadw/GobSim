@@ -8,7 +8,19 @@ export const ExploreAction = {
   name: 'explore',
 
   score(goblin, ctx) {
-    // Starving goblins don't explore — survival first
+    // Desperate search: hungry AND no known food → explore to find some
+    const bush = ctx.manager.findInMemory(goblin, 'bush', 'FULL');
+    const meat = ctx.manager.findInMemory(goblin, 'drop_meat', 'GROUND');
+    const sheep = ctx.manager.findInMemory(goblin, 'sheep', null);
+    const noFoodKnown = !bush && !meat && !sheep && goblin.inventory.meat === 0;
+
+    if (noFoodKnown && goblin.drives.hunger < 0.5) {
+      // Scale with urgency — more desperate = higher score
+      const urgency = 1.0 - goblin.drives.hunger;
+      return urgency * 0.65 * goblin.drives.stamina;
+    }
+
+    // Normal exploration — gated by hunger and driven by curiosity
     if (goblin.drives.hunger < 0.3) return 0;
     return goblin.drives.curiosity * 0.6 * goblin.drives.stamina;
   },

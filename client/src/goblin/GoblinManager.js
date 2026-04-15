@@ -952,7 +952,8 @@ export class GoblinManager {
     const rec = Rel.getOrCreate(loserGoblin, winnerId, sameFamily);
     Rel.adjustOpinion(rec, RELATIONSHIP.RESOURCE_STOLEN_OPINION);
 
-    if (this.narrator && rec.familiarity > 0.2) {
+    // Narrate — always when they know each other at all
+    if (this.narrator && rec.familiarity > 0.05) {
       this.narrator.log(`${loserGoblin.firstName} resents ${winner.firstName} for snatching a resource`, 0xff8844);
     }
   }

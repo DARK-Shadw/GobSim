@@ -58,6 +58,7 @@ export const GatherGoldAction = {
     if (!goblin.path && !goblin._pathPending && goblin.col === target.col && goblin.row === target.row) {
       const entity = ctx.manager.verifyMemory(goblin, target);
       if (!entity) {
+        ctx.manager._onResourceContention(goblin, target.entityId);
         goblin.currentAction = null;
         return;
       }
