@@ -34,7 +34,7 @@ export const SleepAction = {
   },
 
   execute(goblin, ctx) {
-    // Walk to camp first
+    // Walk to camp first (ignoreFog — goblins always know the way home)
     if (ctx.camp && !goblin.path && !goblin._pathPending) {
       const dist = Math.abs(ctx.camp.col - goblin.col) + Math.abs(ctx.camp.row - goblin.row);
 
@@ -46,7 +46,7 @@ export const SleepAction = {
             goblin.path = path;
             goblin.pathIndex = 1;
           }
-        });
+        }, { ignoreFog: true });
         return;
       }
     }

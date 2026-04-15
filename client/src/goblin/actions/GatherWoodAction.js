@@ -56,15 +56,30 @@ export const GatherWoodAction = {
         return;
       }
 
+      // Resource consumed by another goblin — bail out
+      if (entity.type === 'tree' && entity.state !== 'GROWN') {
+        goblin.currentAction = null;
+        return;
+      }
+      if (entity.type === 'drop_wood' && entity.state !== 'GROUND') {
+        goblin.currentAction = null;
+        return;
+      }
+
       if (entity.type === 'tree' && entity.typeDef.chop) {
         goblin.actionTimer += ctx.delta;
         ctx.manager._setAnimation(goblin, 'interact', 'axe');
         goblin.carry = 'axe';
-        if (goblin.actionTimer >= goblin.getEffectiveGatherTime()) {
+        if (goblin.actionTimer >= goblin.getEffectiveGatherTime('woodcutting')) {
           entity.typeDef.chop(entity, ctx.resources._makeContext(ctx.delta));
           goblin.actionTimer = 0.01; // Stay committed — flow into pickup phase
           goblin.carry = 'none';
           ctx.manager._scanResources(goblin); // Discover the new drop
+          const levelUp = goblin.addSkillXP('woodcutting');
+          if (levelUp) {
+            ctx.manager.showFloat(goblin, `\u2B06 Woodcutting ${['I','II','III','IV','V'][levelUp-1]}`, 0x44ff44);
+            if (ctx.manager.narrator) ctx.manager.narrator.log(`${goblin.name} reached Woodcutting ${['I','II','III','IV','V'][levelUp-1]}!`, 0x44ff44);
+          }
           console.log(`[Goblin #${goblin.id}] Chopped tree at (${entity.col},${entity.row})`);
         }
       } else if (entity.type === 'drop_wood' && entity.typeDef.pickup) {
@@ -82,12 +97,15 @@ export const GatherWoodAction = {
     // Pathfind to target
     if (!goblin.path && !goblin._pathPending) {
       goblin._pathPending = true;
+      const targetId = target.entityId;
       ctx.pathfinder.request(goblin, target.col, target.row, (path) => {
         goblin._pathPending = false;
         if (path && path.length > 1) {
           goblin.path = path;
           goblin.pathIndex = 1;
         } else {
+          goblin.memory.delete(targetId);
+          goblin.setActionCooldown('gather_wood', 60);
           goblin.currentAction = null;
         }
       });

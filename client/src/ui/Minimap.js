@@ -2,6 +2,7 @@ import { Container, Sprite, Graphics, Texture } from 'pixi.js';
 import {
   WORLD_COLS, WORLD_ROWS, TILE_SIZE, ELEVATION,
 } from '@shared/constants.js';
+import { FAMILY_COLORS } from '@/utils/GoblinNames.js';
 
 const MAP_W = 200;
 const MAP_H = 160;
@@ -124,7 +125,7 @@ export class Minimap {
       this._dots.fill({ color: 0xff8800 });
     }
 
-    // Goblin dots — pulsing purple
+    // Goblin dots — family-colored, pulsing
     const pulse = 0.5 + 0.5 * Math.sin(this._tick * 0.08);
     const size = 2 + pulse * 1.5;
 
@@ -132,8 +133,9 @@ export class Minimap {
       if (!goblin.alive) continue;
       const gx = goblin.col * SCALE_X;
       const gy = goblin.row * SCALE_Y;
+      const color = FAMILY_COLORS[goblin.familyIndex % FAMILY_COLORS.length];
       this._dots.circle(gx, gy, size);
-      this._dots.fill({ color: 0xaa44ff, alpha: 0.6 + pulse * 0.4 });
+      this._dots.fill({ color, alpha: 0.6 + pulse * 0.4 });
     }
   }
 }

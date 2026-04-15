@@ -4,6 +4,8 @@ import { GoblinSpriteSet } from './GoblinSpriteSet.js';
 import { Pathfinder } from './Pathfinder.js';
 import { SeededRandom } from '@/utils/SeededRandom.js';
 import { Camp } from './Camp.js';
+import { createRandomGenome } from './Genome.js';
+import { getGoblinName, getFamilyName } from '@/utils/GoblinNames.js';
 import { IdleAction } from './actions/IdleAction.js';
 import { WanderAction } from './actions/WanderAction.js';
 import { ExploreAction } from './actions/ExploreAction.js';
@@ -14,7 +16,7 @@ import { HuntAction } from './actions/HuntAction.js';
 import { RestAction } from './actions/RestAction.js';
 import { SleepAction } from './actions/SleepAction.js';
 import { DepositAction } from './actions/DepositAction.js';
-import { TILE_SIZE, WORLD_COLS, WORLD_ROWS, ELEVATION, GOBLIN_ANIM } from '@shared/constants.js';
+import { TILE_SIZE, WORLD_COLS, WORLD_ROWS, ELEVATION, GOBLIN_ANIM, SKILLS } from '@shared/constants.js';
 
 const DECISION_INTERVAL = 30; // ticks between decision cycles (~0.5s at 60fps)
 
@@ -61,13 +63,29 @@ export class GoblinManager {
 
     // Camp (spawned alongside first goblin)
     this.camp = null;
+
+    // Memory sharing timer
+    this._shareTimer = 0;
   }
 
   // ── Spawning ──
 
-  spawnGoblin(col, row) {
+  spawnGoblin(col, row, options = {}) {
     const id = this._nextId++;
-    const goblin = new Goblin(id, col, row);
+    const genome = options.genome || createRandomGenome(this.rng);
+    const goblin = new Goblin(id, col, row, genome);
+
+    // Assign family identity
+    const familyIndex = options.familyIndex !== undefined ? options.familyIndex : (id - 1);
+    goblin.firstName = getGoblinName(id);
+    goblin.familyName = getFamilyName(familyIndex);
+    goblin.name = `${goblin.firstName} ${goblin.familyName}`;
+    goblin.familyIndex = familyIndex;
+    goblin.lineage = {
+      parentIds: options.parentIds || [],
+      familyName: goblin.familyName,
+      generation: options.generation || 0,
+    };
 
     // Create idle sprite
     const frames = this.spriteSet.getFrames('idle', 'none');
@@ -82,6 +100,19 @@ export class GoblinManager {
     goblin._currentAnim = 'idle:none';
     this.container.addChild(sprite);
 
+    // Name label below sprite
+    const nameLabel = new Text({
+      text: goblin.firstName,
+      style: { fontFamily: 'Georgia, serif', fontSize: 9, fill: 0xffffff,
+               stroke: { color: 0x000000, width: 2 } },
+    });
+    nameLabel.anchor.set(0.5, 0);
+    nameLabel.x = goblin.px;
+    nameLabel.y = goblin.py + 4;
+    nameLabel.zIndex = goblin.py + 1;
+    goblin._nameLabel = nameLabel;
+    this.container.addChild(nameLabel);
+
     // Reveal initial vision and scan for resources
     this._revealVision(goblin);
     this._scanResources(goblin);
@@ -95,7 +126,7 @@ export class GoblinManager {
       console.log(`[GoblinManager] Camp at (${campSpot.col}, ${campSpot.row})`);
     }
 
-    console.log(`[GoblinManager] Spawned goblin #${id} at (${col}, ${row})`);
+    console.log(`[GoblinManager] Spawned ${goblin.name} (#${id}) at (${col}, ${row}) | Speed:${goblin.traits.speed.toFixed(2)} Sense:${goblin.traits.sense_range} Gather:${goblin.traits.gather_time.toFixed(0)}`);
     return goblin;
   }
 
@@ -108,6 +139,7 @@ export class GoblinManager {
     for (const goblin of this._goblins.values()) {
       if (!goblin.alive) continue;
       goblin._tickCount++;
+      goblin.updateAge(delta);
 
       this._tickDrives(goblin, delta);
 
@@ -126,7 +158,17 @@ export class GoblinManager {
       // Committed = walking, waiting for path, or mid-interaction (chopping/mining/eating)
       goblin._decisionCooldown--;
       const committed = goblin.path || goblin._pathPending || goblin.actionTimer > 0;
-      if (goblin._decisionCooldown <= 0 && !committed) {
+      const currentActionName = goblin.currentAction?.name;
+      const isFoodAction = currentActionName === 'eat' || currentActionName === 'hunt';
+      const starvingOverride = goblin.drives.hunger < 0.21 && committed && !isFoodAction;
+      if (goblin._decisionCooldown <= 0 && (!committed || starvingOverride)) {
+        if (starvingOverride) {
+          // Survival interrupt — drop everything to find food
+          goblin.path = null;
+          goblin.pathIndex = 0;
+          goblin._pathPending = false;
+          goblin.actionTimer = 0;
+        }
         this._scanResources(goblin);
         this._decide(goblin, delta);
         goblin._decisionCooldown = DECISION_INTERVAL;
@@ -175,6 +217,13 @@ export class GoblinManager {
       this._updateThoughtBubble(goblin);
     }
 
+    // Memory sharing between nearby goblins
+    this._shareTimer += delta;
+    if (this._shareTimer >= 60) {
+      this._tickMemorySharing();
+      this._shareTimer = 0;
+    }
+
     // Viewport culling
     this._updateVisibility(viewBounds);
   }
@@ -190,7 +239,8 @@ export class GoblinManager {
     );
 
     if (this.narrator) {
-      this.narrator.log(`${goblin.name} has perished from ${cause}.`, 0xff0000);
+      const alive = [...this._goblins.values()].filter(g => g.alive && g !== goblin).length;
+      this.narrator.log(`${goblin.name} has perished from ${cause}. ${alive} goblin${alive !== 1 ? 's' : ''} remain.`, 0xff0000);
     }
 
     // Cinematic slow-mo on death
@@ -201,11 +251,16 @@ export class GoblinManager {
       console.log(`[Goblin #${goblin.id}] Dropped inventory: M${goblin.inventory.meat} W${goblin.inventory.wood} G${goblin.inventory.gold}`);
     }
 
-    // Remove thought bubble
+    // Remove thought bubble and name label
     if (goblin._bubble) {
       if (goblin._bubble.parent) goblin._bubble.parent.removeChild(goblin._bubble);
       goblin._bubble.destroy();
       goblin._bubble = null;
+    }
+    if (goblin._nameLabel) {
+      if (goblin._nameLabel.parent) goblin._nameLabel.parent.removeChild(goblin._nameLabel);
+      goblin._nameLabel.destroy();
+      goblin._nameLabel = null;
     }
 
     // Fade out sprite
@@ -498,6 +553,13 @@ export class GoblinManager {
     goblin.sprite.x = goblin.px;
     goblin.sprite.y = goblin.py;
     goblin.sprite.zIndex = goblin.py;
+
+    // Update name label position
+    if (goblin._nameLabel) {
+      goblin._nameLabel.x = goblin.px;
+      goblin._nameLabel.y = goblin.py + 4;
+      goblin._nameLabel.zIndex = goblin.py + 1;
+    }
   }
 
   _onTileChanged(goblin) {
@@ -517,6 +579,9 @@ export class GoblinManager {
     const scored = [];
 
     for (const action of this._actions) {
+      // Skip actions on cooldown (pathfinding failures, etc.)
+      if (goblin.isActionOnCooldown(action.name)) continue;
+
       let s = action.score(goblin, ctx);
       // Inertia: current action gets a small bonus to prevent oscillation
       if (goblin.currentAction === action) s += 0.04;
@@ -674,8 +739,9 @@ export class GoblinManager {
     // ── Stamina (short-term, recovers anywhere when idle/stationary) ──
     const maxStamina = goblin.getEffectiveMaxStamina();
     const isStationary = !goblin.path;
+    const ageStaminaMult = goblin.getAgeMultiplier('stamina_regen');
     if (isStationary && (action === 'rest' || action === 'sleep' || action === 'idle' || !action)) {
-      d.stamina = Math.min(maxStamina, d.stamina + t.stamina_regen * delta);
+      d.stamina = Math.min(maxStamina, d.stamina + t.stamina_regen * ageStaminaMult * delta);
     } else if (goblin.path) {
       d.stamina = Math.max(0, d.stamina - t.stamina_sprint_drain * delta);
     } else if (action === 'gather_wood' || action === 'gather_gold' || action === 'hunt') {
@@ -695,11 +761,15 @@ export class GoblinManager {
       d.fatigue = Math.min(1, d.fatigue + t.fatigue_rise * 0.5 * dnFatigueMult * delta);
     }
 
-    // ── Curiosity ──
-    if (!action || action === 'idle') {
-      d.curiosity = Math.min(1, d.curiosity + t.curiosity_rise * delta);
+    // ── Curiosity (age affects rise rate, suppressed by hunger) ──
+    const ageCuriosityMult = goblin.getAgeMultiplier('curiosity');
+    if (d.hunger < 0.3) {
+      // Starving goblins lose curiosity — survival focus overrides wanderlust
+      d.curiosity = Math.max(0.05, d.curiosity - t.curiosity_rise * 2.0 * delta);
+    } else if (!action || action === 'idle') {
+      d.curiosity = Math.min(1, d.curiosity + t.curiosity_rise * ageCuriosityMult * delta);
     } else if (action === 'rest' || action === 'sleep') {
-      d.curiosity = Math.min(1, d.curiosity + t.curiosity_rise * 0.7 * delta);
+      d.curiosity = Math.min(1, d.curiosity + t.curiosity_rise * ageCuriosityMult * 0.7 * delta);
     } else {
       d.curiosity = Math.max(0.05, d.curiosity - t.curiosity_rise * 0.3 * delta);
     }
@@ -717,10 +787,34 @@ export class GoblinManager {
 
     for (const goblin of this._goblins.values()) {
       if (goblin.sprite) {
-        goblin.sprite.visible = (
-          goblin.px > left && goblin.px < right &&
-          goblin.py > top && goblin.py < bottom
-        );
+        const vis = goblin.px > left && goblin.px < right &&
+                    goblin.py > top && goblin.py < bottom;
+        goblin.sprite.visible = vis;
+        if (goblin._nameLabel) goblin._nameLabel.visible = vis;
+      }
+    }
+  }
+
+  // ── Memory Sharing ──
+
+  _tickMemorySharing() {
+    const gobs = [...this._goblins.values()].filter(g => g.alive);
+    for (let i = 0; i < gobs.length; i++) {
+      for (let j = i + 1; j < gobs.length; j++) {
+        const a = gobs[i], b = gobs[j];
+        const dist = Math.abs(a.col - b.col) + Math.abs(a.row - b.row);
+        if (dist > 2) continue;
+
+        let shared = 0;
+        for (const [key, entry] of a.memory) {
+          if (!b.memory.has(key)) { b.memory.set(key, { ...entry }); shared++; }
+        }
+        for (const [key, entry] of b.memory) {
+          if (!a.memory.has(key)) { a.memory.set(key, { ...entry }); shared++; }
+        }
+        if (shared > 0 && this.narrator) {
+          this.narrator.log(`${a.firstName} shared knowledge with ${b.firstName}`, 0xaaddff);
+        }
       }
     }
   }

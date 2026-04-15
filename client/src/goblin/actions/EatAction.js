@@ -79,15 +79,30 @@ export const EatAction = {
         return;
       }
 
+      // Resource consumed by another goblin — bail out
+      if (entity.type === 'bush' && entity.state !== 'FULL') {
+        goblin.currentAction = null;
+        return;
+      }
+      if (entity.type === 'drop_meat' && entity.state !== 'GROUND') {
+        goblin.currentAction = null;
+        return;
+      }
+
       if (entity.type === 'bush' && entity.typeDef.harvest) {
         goblin.actionTimer += ctx.delta;
         ctx.manager._setAnimation(goblin, 'interact', 'knife');
-        if (goblin.actionTimer >= goblin.traits.gather_time) {
+        if (goblin.actionTimer >= goblin.getEffectiveGatherTime('foraging')) {
           entity.typeDef.harvest(entity, ctx.resources._makeContext(ctx.delta));
           goblin.drives.hunger = Math.min(1, goblin.drives.hunger + 0.4);
           goblin.actionTimer = 0;
           goblin.currentAction = null;
           ctx.manager.showFloat(goblin, '+0.4 hunger', 0x44ff44);
+          const levelUp = goblin.addSkillXP('foraging');
+          if (levelUp) {
+            ctx.manager.showFloat(goblin, `\u2B06 Foraging ${['I','II','III','IV','V'][levelUp-1]}`, 0x44ff44);
+            if (ctx.manager.narrator) ctx.manager.narrator.log(`${goblin.name} reached Foraging ${['I','II','III','IV','V'][levelUp-1]}!`, 0x44ff44);
+          }
           console.log(`[Goblin #${goblin.id}] Ate bush → hunger: ${goblin.drives.hunger.toFixed(2)}`);
         }
       }
@@ -97,12 +112,16 @@ export const EatAction = {
     // Need to pathfind to target
     if (!goblin.path && !goblin._pathPending) {
       goblin._pathPending = true;
+      const targetId = target.entityId;
       ctx.pathfinder.request(goblin, target.col, target.row, (path) => {
         goblin._pathPending = false;
         if (path && path.length > 1) {
           goblin.path = path;
           goblin.pathIndex = 1;
         } else {
+          // Target unreachable — forget it and cooldown (shorter when starving)
+          goblin.memory.delete(targetId);
+          goblin.setActionCooldown('eat', goblin.drives.hunger < 0.21 ? 15 : 60);
           goblin.currentAction = null;
         }
       });

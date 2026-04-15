@@ -49,6 +49,7 @@ export const WanderAction = {
         goblin.pathIndex = 1;
       } else {
         goblin.actionTimer = 0;
+        goblin.setActionCooldown('wander', 45);
         goblin.currentAction = null;
       }
     });

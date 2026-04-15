@@ -56,15 +56,30 @@ export const GatherGoldAction = {
         return;
       }
 
+      // Resource consumed by another goblin — bail out
+      if (entity.type === 'gold' && entity.state !== 'FULL') {
+        goblin.currentAction = null;
+        return;
+      }
+      if (entity.type === 'drop_gold' && entity.state !== 'GROUND') {
+        goblin.currentAction = null;
+        return;
+      }
+
       if (entity.type === 'gold' && entity.typeDef.mine) {
         goblin.actionTimer += ctx.delta;
         ctx.manager._setAnimation(goblin, 'interact', 'pickaxe');
         goblin.carry = 'pickaxe';
-        if (goblin.actionTimer >= goblin.getEffectiveGatherTime()) {
+        if (goblin.actionTimer >= goblin.getEffectiveGatherTime('mining')) {
           entity.typeDef.mine(entity, ctx.resources._makeContext(ctx.delta));
           goblin.actionTimer = 0.01; // Stay committed — flow into pickup phase
           goblin.carry = 'none';
           ctx.manager._scanResources(goblin); // Discover the new drop
+          const levelUp = goblin.addSkillXP('mining');
+          if (levelUp) {
+            ctx.manager.showFloat(goblin, `\u2B06 Mining ${['I','II','III','IV','V'][levelUp-1]}`, 0xffcc00);
+            if (ctx.manager.narrator) ctx.manager.narrator.log(`${goblin.name} reached Mining ${['I','II','III','IV','V'][levelUp-1]}!`, 0xffcc00);
+          }
           console.log(`[Goblin #${goblin.id}] Mined gold at (${entity.col},${entity.row})`);
         }
       } else if (entity.type === 'drop_gold' && entity.typeDef.pickup) {
@@ -82,12 +97,15 @@ export const GatherGoldAction = {
     // Pathfind to target
     if (!goblin.path && !goblin._pathPending) {
       goblin._pathPending = true;
+      const targetId = target.entityId;
       ctx.pathfinder.request(goblin, target.col, target.row, (path) => {
         goblin._pathPending = false;
         if (path && path.length > 1) {
           goblin.path = path;
           goblin.pathIndex = 1;
         } else {
+          goblin.memory.delete(targetId);
+          goblin.setActionCooldown('gather_gold', 60);
           goblin.currentAction = null;
         }
       });

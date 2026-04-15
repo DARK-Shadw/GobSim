@@ -41,7 +41,7 @@ export const DepositAction = {
       return;
     }
 
-    // Walk to camp
+    // Walk to camp (ignoreFog — goblins always know the way home)
     if (!goblin.path && !goblin._pathPending) {
       goblin._pathPending = true;
       ctx.pathfinder.request(goblin, ctx.camp.col, ctx.camp.row, (path) => {
@@ -49,10 +49,23 @@ export const DepositAction = {
         if (path && path.length > 1) {
           goblin.path = path;
           goblin.pathIndex = 1;
+          goblin._depositFails = 0;
         } else {
+          // Path to camp failed (water barrier?) — cooldown prevents tight loop
+          goblin._depositFails = (goblin._depositFails || 0) + 1;
+          if (goblin._depositFails >= 3) {
+            // Give up — drop inventory (items lost)
+            console.log(`[Goblin #${goblin.id}] Can't reach camp after 3 tries — dropping inventory`);
+            goblin.inventory.meat = 0;
+            goblin.inventory.wood = 0;
+            goblin.inventory.gold = 0;
+            goblin.carry = 'none';
+            goblin._depositFails = 0;
+          }
+          goblin.setActionCooldown('deposit', 120);
           goblin.currentAction = null;
         }
-      });
+      }, { ignoreFog: true });
     }
   },
 };

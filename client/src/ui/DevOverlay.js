@@ -311,7 +311,9 @@ export class DevOverlay {
     const explored = goblin.explored.reduce((sum, v) => sum + v, 0);
 
     const lines = [
-      `--- Goblin #${goblin.id} ---`,
+      `--- ${goblin.name} (#${goblin.id}) ---`,
+      `Family: ${goblin.familyName} | Gen ${goblin.lineage.generation}`,
+      `Age: ${goblin.ageYears.toFixed(1)} yrs (${goblin.ageStage})`,
       `Pos: ${goblin.col}, ${goblin.row}`,
       `Action: ${goblin.currentAction?.name || 'none'}`,
       `Timer: ${Math.round(goblin.actionTimer)}`,
@@ -321,6 +323,12 @@ export class DevOverlay {
       `Fatigue:   ${bar(d.fatigue)} ${d.fatigue.toFixed(2)}`,
       `Curiosity: ${bar(d.curiosity)} ${d.curiosity.toFixed(2)}`,
       `MaxStam:   ${goblin.getEffectiveMaxStamina().toFixed(2)}  Speed: ${goblin.getEffectiveSpeed().toFixed(2)}`,
+      ``,
+      `Genome: Spd:${goblin.genome.speed.toFixed(2)} Met:${goblin.genome.metabolism.toFixed(2)} Sns:${goblin.genome.sense_range.toFixed(2)}`,
+      `  Car:${goblin.genome.carry_capacity.toFixed(2)} Gth:${goblin.genome.gather_time.toFixed(2)} Stm:${goblin.genome.stamina_pool.toFixed(2)}`,
+      `  Ftg:${goblin.genome.fatigue_resist.toFixed(2)} Cur:${goblin.genome.curiosity.toFixed(2)}`,
+      ``,
+      `Skills: Wd:${goblin.getSkillLevel('woodcutting')} Mn:${goblin.getSkillLevel('mining')} Fr:${goblin.getSkillLevel('foraging')} Ht:${goblin.getSkillLevel('hunting')}`,
       ``,
       `Inventory: M:${inv.meat} W:${inv.wood} G:${inv.gold}`,
       `Carry: ${goblin.carry}`,

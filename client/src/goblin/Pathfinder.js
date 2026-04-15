@@ -17,8 +17,12 @@ export class Pathfinder {
    * @param {number} goalRow
    * @param {function} callback - (path: [{col,row}]|null) => void
    */
-  request(goblin, goalCol, goalRow, callback) {
-    this._queue.push({ goblin, goalCol, goalRow, callback });
+  /**
+   * @param {object} [options]
+   * @param {boolean} [options.ignoreFog] - Skip fog-of-war check (for camp homing)
+   */
+  request(goblin, goalCol, goalRow, callback, options) {
+    this._queue.push({ goblin, goalCol, goalRow, callback, ignoreFog: options?.ignoreFog });
   }
 
   /** Process up to MAX_PER_FRAME requests per frame. */
@@ -26,13 +30,13 @@ export class Pathfinder {
     let processed = 0;
     while (this._queue.length > 0 && processed < PATHFINDING.MAX_PER_FRAME) {
       const req = this._queue.shift();
-      const path = this._solve(req.goblin, req.goalCol, req.goalRow);
+      const path = this._solve(req.goblin, req.goalCol, req.goalRow, req.ignoreFog);
       req.callback(path);
       processed++;
     }
   }
 
-  _solve(goblin, goalCol, goalRow) {
+  _solve(goblin, goalCol, goalRow, ignoreFog = false) {
     const COLS = WORLD_COLS;
     const ROWS = WORLD_ROWS;
     const startCol = goblin.col;
@@ -45,7 +49,7 @@ export class Pathfinder {
     // Validate goal
     if (goalCol < 0 || goalCol >= COLS || goalRow < 0 || goalRow >= ROWS) return null;
     if (this.world.elevation[goalRow][goalCol] < ELEVATION.FLAT) return null;
-    if (!goblin.explored[goalIdx]) return null;
+    if (!ignoreFog && !goblin.explored[goalIdx]) return null;
 
     const size = COLS * ROWS;
     const gScore = new Uint16Array(size).fill(0xFFFF);
@@ -86,7 +90,7 @@ export class Pathfinder {
         const nIdx = nr * COLS + nc;
         if (closed[nIdx]) continue;
         if (this.world.elevation[nr][nc] < ELEVATION.FLAT) continue;
-        if (!goblin.explored[nIdx]) continue; // Fog of war
+        if (!ignoreFog && !goblin.explored[nIdx]) continue; // Fog of war
 
         const tentativeG = currentG + 1;
         if (tentativeG < gScore[nIdx]) {

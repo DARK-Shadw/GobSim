@@ -8,6 +8,8 @@ export const ExploreAction = {
   name: 'explore',
 
   score(goblin, ctx) {
+    // Starving goblins don't explore — survival first
+    if (goblin.drives.hunger < 0.3) return 0;
     return goblin.drives.curiosity * 0.6 * goblin.drives.stamina;
   },
 
@@ -33,6 +35,7 @@ export const ExploreAction = {
         goblin.pathIndex = 1;
       } else {
         goblin.actionTimer = 0;
+        goblin.setActionCooldown('explore', 60);
         goblin.currentAction = null;
       }
     });

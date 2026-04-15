@@ -22,7 +22,8 @@ import { generateWorldName } from '@/utils/NameGenerator.js';
 import { DayNightCycle } from '@/world/DayNightCycle.js';
 import { Narrator } from '@/ui/Narrator.js';
 import { FloatingTextManager } from '@/ui/FloatingText.js';
-import { TILE_SIZE } from '@shared/constants.js';
+import { GoblinInfoPanel } from '@/ui/GoblinInfoPanel.js';
+import { TILE_SIZE, FOUNDING_GOBLINS } from '@shared/constants.js';
 
 const STORAGE_KEY = 'gobsim_world';
 
@@ -94,8 +95,13 @@ async function boot() {
 
   // 8. Goblin system (separate from resources, shares render container)
   const goblins = new GoblinManager(app, world, resources, decorations.container, dayNight, narrator, floatingText);
-  const spawn = world.findBarrenSpot(6);
-  goblins.spawnGoblin(spawn.col, spawn.row);
+  const spawn = world.findBarrenSpot(3);
+  goblins.spawnGoblin(spawn.col, spawn.row, { familyIndex: 0 });
+  // Spawn remaining founders near the camp
+  for (let i = 1; i < FOUNDING_GOBLINS; i++) {
+    const spot = goblins._findClearTile(spawn.col + i * 2, spawn.row + i);
+    goblins.spawnGoblin(spot.col, spot.row, { familyIndex: i });
+  }
 
   // Reorder: clouds should be above everything, cloud shadows below decorations
   // Current worldContainer order: [foam, flat, shadow, elevated, cloudShadow, cloudSprites, decorations]
@@ -115,6 +121,9 @@ async function boot() {
 
   // ── Dev Overlay (toggle: ` or F3) ──
   const devOverlay = new DevOverlay(app, camera, resources, goblins);
+
+  // ── Goblin Info Panel (left-click to inspect) ──
+  const infoPanel = new GoblinInfoPanel(app, camera, goblins);
 
   // ── Cinematic Intro ──
   const intro = new IntroSequence(app, camera, world, worldName, spawn);
@@ -180,8 +189,9 @@ async function boot() {
     narrator.update();
     floatingText.update();
 
-    // Dev overlay
+    // Dev overlay + info panel
     devOverlay.update();
+    infoPanel.update();
   });
 
   console.log(`[GobSim] World of ${worldName} — Seed: ${seed} — Day: ${dayCount}`);

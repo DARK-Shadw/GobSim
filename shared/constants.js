@@ -93,7 +93,7 @@ export const FIRE_FRAME = {
 export const GOBLIN_DEFAULTS = {
   SPEED: 1.2,
   SENSE_RANGE: 4,
-  METABOLISM: 0.00015,
+  METABOLISM: 0.00012,
   CURIOSITY_RISE: 0.0001,
   GATHER_TIME: 120,
   EAT_TIME: 90,
@@ -115,9 +115,41 @@ export const GOBLIN_DEFAULTS = {
   FATIGUE_SLEEP_THRESHOLD: 0.4,
 };
 
+// Genome (DNA) system — per-goblin trait multipliers
+export const GENOME = {
+  KEYS: ['speed', 'metabolism', 'sense_range', 'carry_capacity',
+         'gather_time', 'stamina_pool', 'fatigue_resist', 'curiosity'],
+  MIN: 0.7,
+  MAX: 1.3,
+};
+
+// Age system
+export const AGE = {
+  TICKS_PER_YEAR: 10800,    // 1 year = 1 day/night cycle (~3 min)
+  YOUTH_END: 2,              // years 0-2: youth
+  PRIME_END: 8,              // years 2-8: prime (8+: elder)
+  YOUTH_SPEED: 0.8,
+  YOUTH_GATHER: 0.8,
+  YOUTH_CURIOSITY: 1.2,
+  ELDER_SPEED: 0.75,
+  ELDER_GATHER: 0.85,        // experience compensates
+  ELDER_STAMINA_REGEN: 0.8,
+};
+
+// Skill leveling
+export const SKILLS = {
+  XP_THRESHOLDS: [0, 5, 15, 30, 50],       // Level 1-5
+  GATHER_MULT: [1.0, 0.9, 0.8, 0.7, 0.6],  // faster at higher levels
+  TYPES: ['woodcutting', 'mining', 'foraging', 'hunting'],
+  LEVEL_NAMES: ['I', 'II', 'III', 'IV', 'V'],
+};
+
+// Founding colony
+export const FOUNDING_GOBLINS = 4;
+
 // A* pathfinding
 export const PATHFINDING = {
-  MAX_PER_FRAME: 3,
+  MAX_PER_FRAME: 5,
   MAX_OPEN_SET: 4000,
   REPATH_INTERVAL: 120,
 };
