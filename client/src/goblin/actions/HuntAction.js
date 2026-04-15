@@ -1,4 +1,5 @@
-import { RESOURCE } from '@shared/constants.js';
+import { RESOURCE, RELATIONSHIP } from '@shared/constants.js';
+import * as Rel from '../Relationship.js';
 
 /**
  * Hunt sheep for meat. Last-resort food source (harder than bushes).
@@ -18,16 +19,21 @@ export const HuntAction = {
     const dist = Math.abs(sheep.col - goblin.col) + Math.abs(sheep.row - goblin.row);
     const proximity = Math.max(0.1, 1 - dist / 30);
 
+    // Relationship modifier — avoid rival's target
+    let relMod = 0;
+    if (Rel.isRivalTargeting(goblin, sheep.col, sheep.row, ctx.allGoblins))
+      relMod -= RELATIONSHIP.RIVAL_RESOURCE_PENALTY;
+
     // When critically hungry, hunt aggressively regardless of bush knowledge
     if (goblin.drives.hunger < 0.21) {
-      return urgency * 0.6 * proximity;
+      return Math.max(0, urgency * 0.6 * proximity + relMod);
     }
 
     // If bushes are known, prefer eating over hunting
     const bush = ctx.manager.findInMemory(goblin, 'bush', 'FULL');
-    if (bush) return urgency * 0.3;
+    if (bush) return Math.max(0, urgency * 0.3 + relMod);
 
-    return urgency * 0.6 * proximity;
+    return Math.max(0, urgency * 0.6 * proximity + relMod);
   },
 
   execute(goblin, ctx) {
@@ -44,6 +50,19 @@ export const HuntAction = {
         // Adjacent to sheep — kill it
         const entity = ctx.manager.verifyMemory(goblin, sheepMem);
         if (!entity) {
+          // Sheep gone — check if there's dropped meat at our feet to pick up
+          const meatMem = ctx.manager.findInMemory(goblin, 'drop_meat', 'GROUND');
+          if (meatMem && goblin.col === meatMem.col && goblin.row === meatMem.row) {
+            const meat = ctx.manager.verifyMemory(goblin, meatMem);
+            if (meat && meat.typeDef.pickup) {
+              meat.typeDef.pickup(meat, ctx.resources._makeContext(ctx.delta));
+              goblin.inventory.meat++;
+              goblin.carry = 'meat';
+              ctx.manager.showFloat(goblin, '+1 meat', 0xff6644);
+              console.log(`[Goblin #${goblin.id}] Picked up meat from kill (total: ${goblin.inventory.meat})`);
+            }
+          }
+          goblin.actionTimer = 0;
           goblin.currentAction = null;
           return;
         }
@@ -55,9 +74,10 @@ export const HuntAction = {
           ctx.resources.triggerFlee(goblin.col, goblin.row, RESOURCE.SHEEP_FLEE_RADIUS);
           if (entity.typeDef.kill) {
             entity.typeDef.kill(entity, ctx.resources._makeContext(ctx.delta));
+            ctx.manager._recordHarvest(entity.id, goblin.id);
           }
-          goblin.actionTimer = 0;
-          goblin.currentAction = null;
+          goblin.actionTimer = 0.01; // Stay committed — flow into pickup phase
+          ctx.manager._scanResources(goblin); // Discover dropped meat
           const levelUp = goblin.addSkillXP('hunting');
           if (levelUp) {
             ctx.manager.showFloat(goblin, `\u2B06 Hunting ${['I','II','III','IV','V'][levelUp-1]}`, 0xff6644);

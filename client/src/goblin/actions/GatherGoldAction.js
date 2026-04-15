@@ -1,3 +1,6 @@
+import * as Rel from '../Relationship.js';
+import { RELATIONSHIP } from '@shared/constants.js';
+
 /**
  * Mine gold ore, or pick up dropped gold.
  * Phases: find target → pathfind → interact animation → collect.
@@ -10,18 +13,21 @@ export const GatherGoldAction = {
     if (goblin.getInventoryTotal() >= goblin.traits.carry_capacity) return 0;
 
     const drop = ctx.manager.findInMemory(goblin, 'drop_gold', 'GROUND');
-    if (drop) {
-      const dist = Math.abs(drop.col - goblin.col) + Math.abs(drop.row - goblin.row);
-      return 0.3 * Math.max(0.1, 1 - dist / 30);
-    }
-
     const gold = ctx.manager.findInMemory(goblin, 'gold', 'FULL');
-    if (gold) {
-      const dist = Math.abs(gold.col - goblin.col) + Math.abs(gold.row - goblin.row);
-      return 0.2 * Math.max(0.1, 1 - dist / 30);
-    }
+    const target = drop || gold;
+    if (!target) return 0;
 
-    return 0;
+    const dist = Math.abs(target.col - goblin.col) + Math.abs(target.row - goblin.row);
+    let baseScore = (drop ? 0.3 : 0.2) * Math.max(0.1, 1 - dist / 30);
+
+    // Relationship modifiers
+    let relMod = 0;
+    if (Rel.isNearFriend(goblin, ctx.allGoblins, RELATIONSHIP.PROXIMITY_RANGE))
+      relMod += RELATIONSHIP.FRIEND_PROXIMITY_BONUS;
+    if (Rel.isRivalTargeting(goblin, target.col, target.row, ctx.allGoblins))
+      relMod -= RELATIONSHIP.RIVAL_RESOURCE_PENALTY;
+
+    return Math.max(0, baseScore + relMod);
   },
 
   execute(goblin, ctx) {
@@ -58,10 +64,12 @@ export const GatherGoldAction = {
 
       // Resource consumed by another goblin — bail out
       if (entity.type === 'gold' && entity.state !== 'FULL') {
+        ctx.manager._onResourceContention(goblin, target.entityId);
         goblin.currentAction = null;
         return;
       }
       if (entity.type === 'drop_gold' && entity.state !== 'GROUND') {
+        ctx.manager._onResourceContention(goblin, target.entityId);
         goblin.currentAction = null;
         return;
       }
@@ -72,6 +80,7 @@ export const GatherGoldAction = {
         goblin.carry = 'pickaxe';
         if (goblin.actionTimer >= goblin.getEffectiveGatherTime('mining')) {
           entity.typeDef.mine(entity, ctx.resources._makeContext(ctx.delta));
+          ctx.manager._recordHarvest(entity.id, goblin.id);
           goblin.actionTimer = 0.01; // Stay committed — flow into pickup phase
           goblin.carry = 'none';
           ctx.manager._scanResources(goblin); // Discover the new drop

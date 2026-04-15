@@ -1,3 +1,6 @@
+import * as Rel from '../Relationship.js';
+import { RELATIONSHIP } from '@shared/constants.js';
+
 /**
  * Chop a tree for wood, or pick up dropped wood.
  * Phases: find target → pathfind → interact animation → collect.
@@ -10,18 +13,21 @@ export const GatherWoodAction = {
     if (goblin.getInventoryTotal() >= goblin.traits.carry_capacity) return 0;
 
     const drop = ctx.manager.findInMemory(goblin, 'drop_wood', 'GROUND');
-    if (drop) {
-      const dist = Math.abs(drop.col - goblin.col) + Math.abs(drop.row - goblin.row);
-      return 0.3 * Math.max(0.1, 1 - dist / 30);
-    }
-
     const tree = ctx.manager.findInMemory(goblin, 'tree', 'GROWN');
-    if (tree) {
-      const dist = Math.abs(tree.col - goblin.col) + Math.abs(tree.row - goblin.row);
-      return 0.2 * Math.max(0.1, 1 - dist / 30);
-    }
+    const target = drop || tree;
+    if (!target) return 0;
 
-    return 0;
+    const dist = Math.abs(target.col - goblin.col) + Math.abs(target.row - goblin.row);
+    let baseScore = (drop ? 0.3 : 0.2) * Math.max(0.1, 1 - dist / 30);
+
+    // Relationship modifiers
+    let relMod = 0;
+    if (Rel.isNearFriend(goblin, ctx.allGoblins, RELATIONSHIP.PROXIMITY_RANGE))
+      relMod += RELATIONSHIP.FRIEND_PROXIMITY_BONUS;
+    if (Rel.isRivalTargeting(goblin, target.col, target.row, ctx.allGoblins))
+      relMod -= RELATIONSHIP.RIVAL_RESOURCE_PENALTY;
+
+    return Math.max(0, baseScore + relMod);
   },
 
   execute(goblin, ctx) {
@@ -58,10 +64,12 @@ export const GatherWoodAction = {
 
       // Resource consumed by another goblin — bail out
       if (entity.type === 'tree' && entity.state !== 'GROWN') {
+        ctx.manager._onResourceContention(goblin, target.entityId);
         goblin.currentAction = null;
         return;
       }
       if (entity.type === 'drop_wood' && entity.state !== 'GROUND') {
+        ctx.manager._onResourceContention(goblin, target.entityId);
         goblin.currentAction = null;
         return;
       }
@@ -72,6 +80,7 @@ export const GatherWoodAction = {
         goblin.carry = 'axe';
         if (goblin.actionTimer >= goblin.getEffectiveGatherTime('woodcutting')) {
           entity.typeDef.chop(entity, ctx.resources._makeContext(ctx.delta));
+          ctx.manager._recordHarvest(entity.id, goblin.id);
           goblin.actionTimer = 0.01; // Stay committed — flow into pickup phase
           goblin.carry = 'none';
           ctx.manager._scanResources(goblin); // Discover the new drop

@@ -1,6 +1,7 @@
 import { Container, Text, Graphics } from 'pixi.js';
 import { TILE_SIZE, GENOME, SKILLS } from '@shared/constants.js';
 import { FAMILY_COLORS } from '@/utils/GoblinNames.js';
+import * as Rel from '@/goblin/Relationship.js';
 
 // ── Layout Constants ──
 const PANEL_W = 300;
@@ -111,14 +112,27 @@ export class GoblinInfoPanel {
       this._genomeValues[key] = new Text({ text: '', style: FONT_VALUE });
     }
 
+    // Relationship section
+    this._relHeader = new Text({ text: 'RELATIONSHIPS', style: FONT_SECTION });
+    this._maxRelEntries = 6;
+    this._relEntries = [];
+    this._relBarData = [];
+    for (let i = 0; i < this._maxRelEntries; i++) {
+      const nameText = new Text({ text: '', style: { ...FONT_LABEL } });
+      const tagText = new Text({ text: '', style: { ...FONT_VALUE, fontSize: 10 } });
+      this._relEntries.push({ nameText, tagText });
+    }
+
     // Add all text children
     const allTexts = [
       this._nameText, this._subText,
       this._driveHeader, this._skillHeader, this._genomeHeader,
+      this._relHeader,
       this._statusText,
       ...Object.values(this._driveLabels), ...Object.values(this._driveValues),
       ...Object.values(this._skillLabels), ...Object.values(this._skillValues),
       ...Object.values(this._genomeLabels), ...Object.values(this._genomeValues),
+      ...this._relEntries.flatMap(e => [e.nameText, e.tagText]),
     ];
     for (const t of allTexts) this.container.addChild(t);
 
@@ -265,6 +279,62 @@ export class GoblinInfoPanel {
       y += LINE_H;
     }
 
+    // ── Relationships Section ──
+    y += SECTION_GAP;
+    this._relHeader.x = PAD;
+    this._relHeader.y = y;
+    y += 20;
+
+    const REL_LINE_H = 18;
+    const REL_BAR_W = 70;
+    const REL_BAR_H = 8;
+    const relBarX = PANEL_W - PAD - REL_BAR_W;
+
+    // Gather alive relationships sorted by familiarity
+    const rels = [];
+    for (const [targetId, rec] of goblin.relationships) {
+      const target = this.goblins.getGoblin(targetId);
+      if (!target || !target.alive) continue;
+      rels.push({ target, rec });
+    }
+    rels.sort((a, b) => b.rec.familiarity - a.rec.familiarity);
+
+    this._relBarData.length = 0;
+    for (let i = 0; i < this._maxRelEntries; i++) {
+      const entry = this._relEntries[i];
+      if (i < rels.length) {
+        const { target, rec } = rels[i];
+        const fColor = FAMILY_COLORS[target.familyIndex % FAMILY_COLORS.length];
+
+        entry.nameText.text = target.firstName;
+        entry.nameText.style.fill = fColor;
+        entry.nameText.x = PAD;
+        entry.nameText.y = y;
+        entry.nameText.visible = true;
+
+        entry.tagText.text = Rel.getRelationshipLabel(rec);
+        entry.tagText.x = PAD + 70;
+        entry.tagText.y = y;
+        entry.tagText.visible = true;
+
+        this._relBarData.push({ y: y + 2, opinion: rec.opinion, x: relBarX, w: REL_BAR_W, h: REL_BAR_H });
+        y += REL_LINE_H;
+      } else {
+        entry.nameText.visible = false;
+        entry.tagText.visible = false;
+      }
+    }
+
+    if (rels.length === 0) {
+      this._relEntries[0].nameText.text = 'No known goblins';
+      this._relEntries[0].nameText.style.fill = VALUE_COLOR;
+      this._relEntries[0].nameText.x = PAD;
+      this._relEntries[0].nameText.y = y;
+      this._relEntries[0].nameText.visible = true;
+      this._relEntries[0].tagText.visible = false;
+      y += REL_LINE_H;
+    }
+
     // ── Status ──
     y += SECTION_GAP;
     const action = goblin.currentAction?.name || 'idle';
@@ -294,7 +364,7 @@ export class GoblinInfoPanel {
 
     // Section dividers
     const dividerY = (headerText) => headerText.y - 4;
-    for (const header of [this._driveHeader, this._skillHeader, this._genomeHeader]) {
+    for (const header of [this._driveHeader, this._skillHeader, this._genomeHeader, this._relHeader]) {
       const dy = dividerY(header);
       this._bg.rect(PAD, dy, PANEL_W - PAD * 2, 1);
       this._bg.fill({ color: DIVIDER_COLOR, alpha: 0.5 });
@@ -378,6 +448,36 @@ export class GoblinInfoPanel {
         this._bars.roundRect(PAD, by, skillBarW, 3, 1);
         this._bars.fill({ color: 0xddaa33, alpha: 0.7 });
       }
+    }
+
+    // Relationship opinion bars (centered at neutral, red left / green right)
+    for (const rb of this._relBarData) {
+      const { x: rbX, y: rbY, w: rbW, h: rbH, opinion } = rb;
+      // Background
+      this._bars.roundRect(rbX, rbY, rbW, rbH, 2);
+      this._bars.fill({ color: BAR_BG });
+      // Fill from center
+      const centerX = rbX + rbW / 2;
+      const fillColor = Rel.getOpinionColor(opinion);
+      if (opinion > 0) {
+        const w = (rbW / 2) * opinion;
+        if (w > 0) {
+          this._bars.roundRect(centerX, rbY, w, rbH, 2);
+          this._bars.fill({ color: fillColor, alpha: 0.85 });
+        }
+      } else if (opinion < 0) {
+        const w = (rbW / 2) * Math.abs(opinion);
+        if (w > 0) {
+          this._bars.roundRect(centerX - w, rbY, w, rbH, 2);
+          this._bars.fill({ color: fillColor, alpha: 0.85 });
+        }
+      }
+      // Center line (neutral marker)
+      this._bars.rect(centerX - 0.5, rbY, 1, rbH);
+      this._bars.fill({ color: 0xffffff, alpha: 0.3 });
+      // Border
+      this._bars.roundRect(rbX, rbY, rbW, rbH, 2);
+      this._bars.stroke({ color: 0x444433, width: 1, alpha: 0.4 });
     }
   }
 

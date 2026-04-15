@@ -91,6 +91,9 @@ export class Goblin {
     // ── Action Cooldowns (prevents tight pathfinding failure loops) ──
     this._actionCooldowns = new Map(); // actionName → tick when cooldown expires
 
+    // ── Relationships (Phase 4) ──
+    this.relationships = new Map(); // Map<goblinId → RelationshipRecord>
+
     // ── Survival ──
     this._starvationTimer = 0;
   }
@@ -211,8 +214,13 @@ export class Goblin {
     this._actionCooldowns.set(name, this._tickCount + ticks);
   }
 
+  getRelationship(targetId) {
+    return this.relationships.get(targetId) || null;
+  }
+
   destroy() {
     this.alive = false;
+    this.relationships.clear();
     if (this.sprite) {
       if (this.sprite.parent) this.sprite.parent.removeChild(this.sprite);
       this.sprite.destroy();

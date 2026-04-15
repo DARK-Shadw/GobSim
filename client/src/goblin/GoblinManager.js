@@ -16,7 +16,8 @@ import { HuntAction } from './actions/HuntAction.js';
 import { RestAction } from './actions/RestAction.js';
 import { SleepAction } from './actions/SleepAction.js';
 import { DepositAction } from './actions/DepositAction.js';
-import { TILE_SIZE, WORLD_COLS, WORLD_ROWS, ELEVATION, GOBLIN_ANIM, SKILLS } from '@shared/constants.js';
+import * as Rel from './Relationship.js';
+import { TILE_SIZE, WORLD_COLS, WORLD_ROWS, ELEVATION, GOBLIN_ANIM, SKILLS, RELATIONSHIP } from '@shared/constants.js';
 
 const DECISION_INTERVAL = 30; // ticks between decision cycles (~0.5s at 60fps)
 
@@ -66,6 +67,9 @@ export class GoblinManager {
 
     // Memory sharing timer
     this._shareTimer = 0;
+
+    // Resource contention tracking (who harvested what)
+    this._lastHarvestedBy = new Map(); // entityId → goblinId
   }
 
   // ── Spawning ──
@@ -118,6 +122,14 @@ export class GoblinManager {
     this._scanResources(goblin);
 
     this._goblins.set(id, goblin);
+
+    // Initialize mutual relationships with all existing goblins
+    for (const existing of this._goblins.values()) {
+      if (existing.id === id || !existing.alive) continue;
+      const sameFamily = existing.familyIndex === goblin.familyIndex;
+      Rel.getOrCreate(goblin, existing.id, sameFamily);
+      Rel.getOrCreate(existing, goblin.id, sameFamily);
+    }
 
     // Spawn camp near first goblin on a clear tile
     if (!this.camp) {
@@ -217,10 +229,11 @@ export class GoblinManager {
       this._updateThoughtBubble(goblin);
     }
 
-    // Memory sharing between nearby goblins
+    // Memory sharing + relationship ticking
     this._shareTimer += delta;
     if (this._shareTimer >= 60) {
       this._tickMemorySharing();
+      this._tickRelationships();
       this._shareTimer = 0;
     }
 
@@ -644,6 +657,7 @@ export class GoblinManager {
       rng: this.rng,
       camp: this.camp,
       dayNight: this.dayNight,
+      allGoblins: this._goblins,
       delta,
     };
   }
@@ -794,10 +808,152 @@ export class GoblinManager {
         for (const [key, entry] of b.memory) {
           if (!a.memory.has(key)) { a.memory.set(key, { ...entry }); shared++; }
         }
-        if (shared > 0 && this.narrator) {
-          this.narrator.log(`${a.firstName} shared knowledge with ${b.firstName}`, 0xaaddff);
+        if (shared > 0) {
+          if (this.narrator) {
+            this.narrator.log(`${a.firstName} shared knowledge with ${b.firstName}`, 0xaaddff);
+          }
+          // Sharing knowledge builds trust and opinion
+          const sameFamily = a.familyIndex === b.familyIndex;
+          const recAB = Rel.getOrCreate(a, b.id, sameFamily);
+          const recBA = Rel.getOrCreate(b, a.id, sameFamily);
+          Rel.adjustOpinion(recAB, RELATIONSHIP.MEMORY_SHARE_OPINION);
+          Rel.adjustOpinion(recBA, RELATIONSHIP.MEMORY_SHARE_OPINION);
+          Rel.adjustTrust(recAB, RELATIONSHIP.MEMORY_SHARE_TRUST);
+          Rel.adjustTrust(recBA, RELATIONSHIP.MEMORY_SHARE_TRUST);
         }
       }
+    }
+  }
+
+  // ── Relationship System ──
+
+  _tickRelationships() {
+    const gobs = [...this._goblins.values()].filter(g => g.alive);
+
+    for (let i = 0; i < gobs.length; i++) {
+      for (let j = i + 1; j < gobs.length; j++) {
+        const a = gobs[i], b = gobs[j];
+        const dist = Math.abs(a.col - b.col) + Math.abs(a.row - b.row);
+        const sameFamily = a.familyIndex === b.familyIndex;
+
+        const recAB = Rel.getOrCreate(a, b.id, sameFamily);
+        const recBA = Rel.getOrCreate(b, a.id, sameFamily);
+
+        // Proximity bonding
+        if (dist <= RELATIONSHIP.PROXIMITY_RANGE) {
+          Rel.adjustFamiliarity(recAB, RELATIONSHIP.FAMILIARITY_RATE);
+          Rel.adjustFamiliarity(recBA, RELATIONSHIP.FAMILIARITY_RATE);
+          recAB.lastProximityTick = a._tickCount;
+          recBA.lastProximityTick = b._tickCount;
+        } else {
+          Rel.adjustFamiliarity(recAB, -RELATIONSHIP.FAMILIARITY_DECAY);
+          Rel.adjustFamiliarity(recBA, -RELATIONSHIP.FAMILIARITY_DECAY);
+        }
+
+        // Deposit observation — seeing others contribute boosts opinion
+        if (dist <= RELATIONSHIP.PROXIMITY_RANGE) {
+          if (a.currentAction?.name === 'deposit' && !a.path) {
+            Rel.adjustOpinion(recBA, RELATIONSHIP.DEPOSIT_OBSERVED_OPINION);
+          }
+          if (b.currentAction?.name === 'deposit' && !b.path) {
+            Rel.adjustOpinion(recAB, RELATIONSHIP.DEPOSIT_OBSERVED_OPINION);
+          }
+        }
+
+        // Update tags and narrate transitions
+        const changesAB = Rel.updateTags(recAB, a, b);
+        const changesBA = Rel.updateTags(recBA, b, a);
+        this._narrateTagChanges(a, b, changesAB);
+        this._narrateTagChanges(b, a, changesBA);
+
+        // Foreshadow dangerous tensions
+        if (recAB.opinion <= RELATIONSHIP.CONFRONTATION_THRESHOLD
+            && recAB.lastProximityTick === a._tickCount) {
+          if (this.narrator && !a._warnedTension?.[b.id]) {
+            if (!a._warnedTension) a._warnedTension = {};
+            a._warnedTension[b.id] = true;
+            this.narrator.log(`Tensions between ${a.firstName} and ${b.firstName} are dangerous`, 0xff4444);
+          }
+        } else if (recAB.opinion > RELATIONSHIP.CONFRONTATION_THRESHOLD && a._warnedTension?.[b.id]) {
+          a._warnedTension[b.id] = false;
+        }
+
+        // Food sharing — adjacent, high trust, one starving
+        if (dist <= 1) {
+          this._tryShareFood(a, b, recAB, recBA);
+          this._tryShareFood(b, a, recBA, recAB);
+        }
+      }
+    }
+  }
+
+  _tryShareFood(donor, receiver, recDonorToReceiver, recReceiverToDonor) {
+    if (recDonorToReceiver.trust < RELATIONSHIP.FOOD_SHARE_TRUST_THRESHOLD) return;
+    if (receiver.drives.hunger >= RELATIONSHIP.FOOD_SHARE_HUNGER_THRESHOLD) return;
+    if (donor.drives.hunger < RELATIONSHIP.FOOD_SHARE_DONOR_MIN_HUNGER) return;
+    if (donor.inventory.meat <= 0) return;
+    if (donor._tickCount - (recDonorToReceiver.lastFoodShareTick || 0) < RELATIONSHIP.FOOD_SHARE_COOLDOWN) return;
+
+    // Share food
+    donor.inventory.meat--;
+    receiver.inventory.meat++;
+    donor.carry = donor.getInventoryTotal() > 0 ? 'meat' : 'none';
+    receiver.carry = 'meat';
+    recDonorToReceiver.lastFoodShareTick = donor._tickCount;
+
+    // Receiver grateful, donor feels good
+    Rel.adjustOpinion(recReceiverToDonor, RELATIONSHIP.FOOD_SHARED_OPINION);
+    Rel.adjustTrust(recReceiverToDonor, RELATIONSHIP.FOOD_SHARED_TRUST);
+    Rel.adjustOpinion(recDonorToReceiver, RELATIONSHIP.FOOD_SHARED_OPINION * 0.5);
+
+    this.showFloat(donor, `Shared food`, 0x88ff88);
+    this.showFloat(receiver, `Received food`, 0x88ff88);
+    if (this.narrator) {
+      this.narrator.log(`${donor.firstName} shared food with starving ${receiver.firstName}`, 0x88ff88);
+    }
+  }
+
+  _narrateTagChanges(source, target, changes) {
+    if (!changes || !this.narrator) return;
+    for (const tag of changes.added) {
+      switch (tag) {
+        case 'friend':
+          this.narrator.log(`${source.firstName} and ${target.firstName} became friends`, 0x88ff88);
+          break;
+        case 'rival':
+          this.narrator.log(`${source.firstName} now sees ${target.firstName} as a rival`, 0xff6644);
+          break;
+        case 'mentor':
+          this.narrator.log(`Elder ${source.firstName} mentors young ${target.firstName}`, 0xaaddff);
+          break;
+      }
+    }
+  }
+
+  // ── Resource Contention Tracking ──
+
+  _recordHarvest(entityId, goblinId) {
+    this._lastHarvestedBy.set(entityId, goblinId);
+    if (this._lastHarvestedBy.size > 50) {
+      const keys = [...this._lastHarvestedBy.keys()];
+      for (let i = 0; i < keys.length - 50; i++) {
+        this._lastHarvestedBy.delete(keys[i]);
+      }
+    }
+  }
+
+  _onResourceContention(loserGoblin, entityId) {
+    const winnerId = this._lastHarvestedBy.get(entityId);
+    if (!winnerId || winnerId === loserGoblin.id) return;
+    const winner = this.getGoblin(winnerId);
+    if (!winner || !winner.alive) return;
+
+    const sameFamily = loserGoblin.familyIndex === winner.familyIndex;
+    const rec = Rel.getOrCreate(loserGoblin, winnerId, sameFamily);
+    Rel.adjustOpinion(rec, RELATIONSHIP.RESOURCE_STOLEN_OPINION);
+
+    if (this.narrator && rec.familiarity > 0.2) {
+      this.narrator.log(`${loserGoblin.firstName} resents ${winner.firstName} for snatching a resource`, 0xff8844);
     }
   }
 }

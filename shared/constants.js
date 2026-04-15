@@ -144,6 +144,51 @@ export const SKILLS = {
   LEVEL_NAMES: ['I', 'II', 'III', 'IV', 'V'],
 };
 
+// Relationship system
+export const RELATIONSHIP = {
+  UPDATE_INTERVAL: 60,           // ticks between relationship updates (~1s)
+  PROXIMITY_RANGE: 3,            // Manhattan tiles for proximity bonding
+
+  // Familiarity rates (per update tick)
+  FAMILIARITY_RATE: 0.002,
+  FAMILIARITY_DECAY: 0.0002,
+
+  // Opinion deltas (per event)
+  MEMORY_SHARE_OPINION: 0.02,
+  MEMORY_SHARE_TRUST: 0.015,
+  RESOURCE_STOLEN_OPINION: -0.08,
+  DEPOSIT_OBSERVED_OPINION: 0.01,
+  FOOD_SHARED_OPINION: 0.12,
+  FOOD_SHARED_TRUST: 0.08,
+
+  // Family bonus (initial values for same-family goblins)
+  SAME_FAMILY_BASE_OPINION: 0.3,
+  SAME_FAMILY_BASE_TRUST: 0.2,
+
+  // Tag thresholds
+  FRIEND_THRESHOLD: 0.5,
+  RIVAL_THRESHOLD: -0.4,
+  MENTOR_MIN_AGE_DIFF: 3,       // years
+  MENTOR_FAMILIARITY: 0.4,
+
+  // Action scoring modifiers
+  FRIEND_PROXIMITY_BONUS: 0.03,
+  RIVAL_RESOURCE_PENALTY: 0.15,
+
+  // Food sharing gates
+  FOOD_SHARE_TRUST_THRESHOLD: 0.6,
+  FOOD_SHARE_HUNGER_THRESHOLD: 0.15,
+  FOOD_SHARE_DONOR_MIN_HUNGER: 0.5,
+  FOOD_SHARE_COOLDOWN: 300,
+
+  // Clamps
+  OPINION_MIN: -1.0, OPINION_MAX: 1.0,
+  TRUST_MIN: 0.0,   TRUST_MAX: 1.0,
+
+  // Future phase hooks
+  CONFRONTATION_THRESHOLD: -0.7, // Phase 8: triggers fight
+};
+
 // Founding colony
 export const FOUNDING_GOBLINS = 4;
 

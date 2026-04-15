@@ -1,3 +1,6 @@
+import * as Rel from '../Relationship.js';
+import { RELATIONSHIP } from '@shared/constants.js';
+
 /**
  * Eat action: harvest a bush for berries OR eat carried meat.
  * Phases: find food → pathfind → interact animation → restore hunger.
@@ -13,20 +16,28 @@ export const EatAction = {
       return urgency * 0.9;
     }
 
-    // Know about a bush? Score based on urgency and proximity
+    // Know about food sources
     const bush = ctx.manager.findInMemory(goblin, 'bush', 'FULL');
-    if (bush) {
-      const dist = Math.abs(bush.col - goblin.col) + Math.abs(bush.row - goblin.row);
-      const proximity = Math.max(0.1, 1 - dist / 30);
-      return urgency * 0.7 * proximity;
-    }
-
-    // Know about dropped meat on ground?
     const meat = ctx.manager.findInMemory(goblin, 'drop_meat', 'GROUND');
+
     if (meat) {
       const dist = Math.abs(meat.col - goblin.col) + Math.abs(meat.row - goblin.row);
       const proximity = Math.max(0.1, 1 - dist / 30);
-      return urgency * 0.8 * proximity;
+      let baseScore = urgency * 0.8 * proximity;
+      // Relationship modifiers
+      if (Rel.isRivalTargeting(goblin, meat.col, meat.row, ctx.allGoblins))
+        baseScore -= RELATIONSHIP.RIVAL_RESOURCE_PENALTY;
+      return Math.max(0, baseScore);
+    }
+
+    if (bush) {
+      const dist = Math.abs(bush.col - goblin.col) + Math.abs(bush.row - goblin.row);
+      const proximity = Math.max(0.1, 1 - dist / 30);
+      let baseScore = urgency * 0.7 * proximity;
+      // Relationship modifiers
+      if (Rel.isRivalTargeting(goblin, bush.col, bush.row, ctx.allGoblins))
+        baseScore -= RELATIONSHIP.RIVAL_RESOURCE_PENALTY;
+      return Math.max(0, baseScore);
     }
 
     return 0;
@@ -81,10 +92,12 @@ export const EatAction = {
 
       // Resource consumed by another goblin — bail out
       if (entity.type === 'bush' && entity.state !== 'FULL') {
+        ctx.manager._onResourceContention(goblin, target.entityId);
         goblin.currentAction = null;
         return;
       }
       if (entity.type === 'drop_meat' && entity.state !== 'GROUND') {
+        ctx.manager._onResourceContention(goblin, target.entityId);
         goblin.currentAction = null;
         return;
       }
@@ -94,6 +107,7 @@ export const EatAction = {
         ctx.manager._setAnimation(goblin, 'interact', 'knife');
         if (goblin.actionTimer >= goblin.getEffectiveGatherTime('foraging')) {
           entity.typeDef.harvest(entity, ctx.resources._makeContext(ctx.delta));
+          ctx.manager._recordHarvest(entity.id, goblin.id);
           goblin.drives.hunger = Math.min(1, goblin.drives.hunger + 0.4);
           goblin.actionTimer = 0;
           goblin.currentAction = null;
