@@ -8,16 +8,21 @@ export const ExploreAction = {
   name: 'explore',
 
   score(goblin, ctx) {
-    // Desperate search: hungry AND no known food → explore to find some
-    const bush = ctx.manager.findInMemory(goblin, 'bush', 'FULL');
-    const meat = ctx.manager.findInMemory(goblin, 'drop_meat', 'GROUND');
-    const sheep = ctx.manager.findInMemory(goblin, 'sheep', null);
-    const noFoodKnown = !bush && !meat && !sheep && goblin.inventory.meat === 0;
+    // Count known food sources
+    let foodCount = 0;
+    for (const entry of goblin.memory.values()) {
+      if (entry.type === 'bush' && entry.state === 'FULL') foodCount++;
+      if (entry.type === 'drop_meat' && entry.state === 'GROUND') foodCount++;
+      if (entry.type === 'sheep') foodCount++;
+    }
+    const hasMeat = goblin.inventory.meat > 0;
 
-    if (noFoodKnown && goblin.drives.hunger < 0.5) {
-      // Scale with urgency — more desperate = higher score
-      const urgency = 1.0 - goblin.drives.hunger;
-      return urgency * 0.65 * goblin.drives.stamina;
+    // Proactive scouting: know fewer than 2 food sources → explore early
+    // This prevents the "ate everything nearby, now starving" death spiral
+    if (foodCount < 2 && !hasMeat) {
+      // Starts high even when well-fed, scales with how little they know
+      const scarcityBonus = foodCount === 0 ? 0.55 : 0.35;
+      return scarcityBonus * goblin.drives.stamina;
     }
 
     // Normal exploration — gated by hunger and driven by curiosity
