@@ -632,25 +632,7 @@ export class GoblinManager {
         ` | Mem: ${goblin.memory.size}`
       );
 
-      this._narrateAction(goblin, name);
     }
-  }
-
-  _narrateAction(goblin, action) {
-    if (!this.narrator) return;
-    const n = goblin.name;
-    const msgs = {
-      eat: `${n} is hungry... searching for food`,
-      gather_wood: `${n} heads out to chop wood`,
-      gather_gold: `${n} goes mining for gold`,
-      hunt: `${n} is hunting for meat`,
-      explore: `${n} sets off to explore`,
-      wander: `${n} wanders around`,
-      rest: `${n} stops to catch breath`,
-      sleep: `${n} heads to camp to sleep`,
-      deposit: `${n} brings resources to camp`,
-    };
-    if (msgs[action]) this.narrator.log(msgs[action]);
   }
 
   _makeActionContext(delta) {
